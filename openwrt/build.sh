@@ -53,17 +53,7 @@ if curl --help | grep progress-bar >/dev/null 2>&1; then
     CURL_BAR="--progress-bar";
 fi
 
-# Source branch
-if [ "$1" = "dev" ]; then
-    export branch=openwrt-23.05
-    export version=snapshots-23.05
-    export toolchain_version=openwrt-23.05
-elif [ "$1" = "rc2" ]; then
-    latest_release="v$(curl -s $mirror/tags/v23)"
-    export branch=$latest_release
-    export version=rc2
-    export toolchain_version=openwrt-23.05
-elif [ -z "$1" ]; then
+if [ -z "$1" ] || [ "$2" != "nanopi-r4s" -a "$2" != "nanopi-r5s" -a "$2" != "x86_64" ]; then
     echo -e "\n${RED_COLOR}Building type not specified.${RES}\n"
     echo -e "Usage:\n"
     echo -e "nanopi-r4s releases: ${GREEN_COLOR}bash build.sh rc2 nanopi-r4s${RES}"
@@ -75,14 +65,32 @@ elif [ -z "$1" ]; then
     exit 1
 fi
 
+# Source branch
+if [ "$1" = "dev" ]; then
+    export branch=openwrt-23.05
+    export version=snapshots-23.05
+    export toolchain_version=openwrt-23.05
+elif [ "$1" = "rc2" ]; then
+    latest_release="v$(curl -s $mirror/tags/v23)"
+    export branch=$latest_release
+    export version=rc2
+    export toolchain_version=openwrt-23.05
+fi
+
 # platform
 export platform=$2
 [ "$platform" = "nanopi-r4s" ] && export platform="rk3399" toolchain_arch="nanopi-r4s"
 [ "$platform" = "nanopi-r5s" ] && export platform="rk3568" toolchain_arch="nanopi-r5s"
 [ "$platform" = "x86_64" ] && export platform="x86_64" toolchain_arch="x86_64"
 
+# gcc 13
+export USE_GCC13=$USE_GCC13
+
 # use glibc
 export USE_GLIBC=$USE_GLIBC
+
+# lrng
+export ENABLE_LRNG=$ENABLE_LRNG
 
 # print version
 echo -e "\r\n${GREEN_COLOR}Building $branch${RES}\r\n"
@@ -110,7 +118,16 @@ else
     echo -e "${GREEN_COLOR}Kernel: $kmodpkg_name ${RES}"
     rm -f kernel.txt
 fi
+
 echo -e "${GREEN_COLOR}Date: $CURRENT_DATE${RES}\r\n"
+
+[ "$USE_GCC13" = "y" ] && echo -e "${GREEN_COLOR}GCC VERSION: 13${RES}" || echo -e "${GREEN_COLOR}GCC VERSION: 11${RES}"
+[ "$ENABLE_OTA" = "y" ] && echo -e "${GREEN_COLOR}ENABLE_OTA: true${RES}" || echo -e "${GREEN_COLOR}ENABLE_OTA: false${RES}"
+[ "$ENABLE_BPF" = "y" ] && echo -e "${GREEN_COLOR}ENABLE_BPF: true${RES}" || echo -e "${GREEN_COLOR}ENABLE_BPF: false${RES}"
+[ "$ENABLE_LTO" = "y" ] && echo -e "${GREEN_COLOR}ENABLE_LTO: true${RES}" || echo -e "${GREEN_COLOR}ENABLE_LTO: false${RES}"
+[ "$ENABLE_LRNG" = "y" ] && echo -e "${GREEN_COLOR}ENABLE_LRNG: true${RES}" || echo -e "${GREEN_COLOR}ENABLE_LRNG: false${RES}"
+[ "$BUILD_FAST" = "y" ] && echo -e "${GREEN_COLOR}BUILD_FAST: true${RES}" || echo -e "${GREEN_COLOR}BUILD_FAST: false${RES}"
+[ "$MINIMAL_BUILD" = "y" ] && echo -e "${GREEN_COLOR}MINIMAL_BUILD: true${RES}\r\n" || echo -e "${GREEN_COLOR}MINIMAL_BUILD: false${RES}\r\n"
 
 # get source
 rm -rf openwrt master && mkdir master
@@ -232,8 +249,11 @@ export ENABLE_LTO=$ENABLE_LTO
     sed -i '/NaiveProxy/d' .config
 }
 
-# openwrt-23.05 gcc11
-if [ ! "$USE_GLIBC" = "y" ]; then
+# openwrt-23.05 gcc11/13
+if [ "$USE_GCC13" = "y" ]; then
+    curl -s $mirror/openwrt/generic/config-gcc13 >> .config
+    curl -s https://github.com/openwrt/openwrt/commit/df47decd60808d099e663b32f60795f629ee81e3.patch | patch -p1
+elif [ ! "$USE_GLIBC" = "y" ]; then
     curl -s $mirror/openwrt/generic/config-gcc11 >> .config
 fi
 
@@ -248,7 +268,11 @@ if [ "$BUILD_FAST" = "y" ]; then
     [ "$USE_GLIBC" = "y" ] && LIBC=glibc || LIBC=musl
     [ "$isCN" = "CN" ] && github_proxy="http://gh.cooluc.com/" || github_proxy=""
     echo -e "\n${GREEN_COLOR}Download Toolchain ...${RES}"
-    curl -L "$github_proxy"https://github.com/sbwml/toolchain-cache/releases/latest/download/toolchain_"$LIBC"_"$toolchain_arch".tar.gz -o toolchain.tar.gz $CURL_BAR
+    if [ "$USE_GCC13" = "y" ]; then
+        curl -L "$github_proxy"https://github.com/sbwml/toolchain-cache/releases/latest/download/toolchain_"$LIBC"_"$toolchain_arch"_13.tar.gz -o toolchain.tar.gz $CURL_BAR
+    else
+        curl -L "$github_proxy"https://github.com/sbwml/toolchain-cache/releases/latest/download/toolchain_"$LIBC"_"$toolchain_arch".tar.gz -o toolchain.tar.gz $CURL_BAR
+    fi
     echo -e "\n${GREEN_COLOR}Process Toolchain ...${RES}"
     tar -zxf toolchain.tar.gz && rm -f toolchain.tar.gz
     mkdir bin
@@ -270,7 +294,11 @@ if [ "$BUILD_TOOLCHAIN" = "y" ]; then
     make -j$cores toolchain/compile || make -j$cores toolchain/compile V=s || exit 1
     mkdir -p toolchain-cache
     [ "$USE_GLIBC" = "y" ] && LIBC=glibc || LIBC=musl
-    tar -zcf toolchain-cache/toolchain_"$LIBC"_"$toolchain_arch".tar.gz ./{build_dir,dl,staging_dir,tmp} && echo -e "${GREEN_COLOR} Build success! ${RES}"
+    if [ "$USE_GCC13" = "y" ]; then
+        tar -zcf toolchain-cache/toolchain_"$LIBC"_"$toolchain_arch"_13.tar.gz ./{build_dir,dl,staging_dir,tmp} && echo -e "${GREEN_COLOR} Build success! ${RES}"
+    else
+        tar -zcf toolchain-cache/toolchain_"$LIBC"_"$toolchain_arch".tar.gz ./{build_dir,dl,staging_dir,tmp} && echo -e "${GREEN_COLOR} Build success! ${RES}"
+    fi
     exit 0
 else
     echo -e "\r\n${GREEN_COLOR}Building OpenWrt ...${RES}\r\n"
