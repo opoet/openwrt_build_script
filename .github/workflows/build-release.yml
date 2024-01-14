@@ -35,6 +35,8 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@main
+      with:
+        ref: main
 
     - name: Set time zone
       run: sudo timedatectl set-timezone 'Asia/Shanghai'
@@ -88,7 +90,7 @@ jobs:
       continue-on-error: true
       run: |
         export GITHUB_REPO=${{ github.repository }}
-        BUILD_FAST=y ENABLE_BPF=y USE_GCC13=y ENABLE_LTO=y bash $GITHUB_WORKSPACE/build.sh ${{ matrix.tag.type }} ${{ github.event.inputs.model }}
+        BUILD_FAST=y ENABLE_BPF=y USE_GCC13=y ENABLE_LTO=y bash ${{ github.workspace }}/build.sh ${{ matrix.tag.type }} ${{ github.event.inputs.model }}
         cd openwrt
         tags=$(git describe --abbrev=0 --tags)
         echo "latest_release=$tags" >> "$GITHUB_ENV"
@@ -135,10 +137,10 @@ jobs:
       continue-on-error: true
       uses: ncipollo/release-action@main
       with:
-        name: OpenWRT-${{ env.latest_release }}-${{ env.SHORT_SHA }}
+        name: OpenWRT-${{ env.latest_release }}-${{ github.ref_name }}-${{ env.SHORT_SHA }}
         allowUpdates: true
-        tag: ${{ env.latest_release }}-${{ env.SHORT_SHA }}
-        commit: master
+        tag: ${{ env.latest_release }}-${{ github.ref_name }}-${{ env.SHORT_SHA }}
+        commit: main
         replacesArtifacts: true
         token: ${{ secrets.GITHUB_TOKEN }}
         artifacts: |
