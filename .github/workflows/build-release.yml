@@ -90,7 +90,7 @@ jobs:
       continue-on-error: true
       run: |
         export GITHUB_REPO=${{ github.repository }}
-        BUILD_FAST=y ENABLE_BPF=y USE_GCC13=y ENABLE_LTO=y bash ${{ github.workspace }}/build.sh ${{ matrix.tag.type }} ${{ github.event.inputs.model }}
+        BUILD_FAST=y ENABLE_BPF=y ENABLE_LTO=y ENABLE_LRNG=y USE_GCC13=y USE_MOLD=y bash ${{ github.workspace }}/build.sh ${{ matrix.tag.type }} ${{ github.event.inputs.model }}
         cd openwrt
         tags=$(git describe --abbrev=0 --tags)
         echo "latest_release=$tags" >> "$GITHUB_ENV"
