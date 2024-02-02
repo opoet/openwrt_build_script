@@ -14,6 +14,9 @@ fi
 # config/Config-kernel.in patch
 curl -s $mirror/openwrt/patch/generic/0001-kernel-add-MODULE_ALLOW_BTF_MISMATCH-option.patch | patch -p1
 
+# meson: add platform variable to cross-compilation file
+curl -s $mirror/openwrt/patch/generic/010-meson-add-platform-variable-to-cross-compilation-file.patch | patch -p1
+
 # Fix x86 - CONFIG_ALL_KMODS
 if [ "$platform" = "x86_64" ]; then
     sed -i 's/hwmon, +PACKAGE_kmod-thermal:kmod-thermal/hwmon/g' package/kernel/linux/modules/hwmon.mk
@@ -121,7 +124,7 @@ else
 fi
 
 # Shortcut Forwarding Engine
-git clone https://$gitea/sbwml/shortcut-fe package/shortcut-fe
+git clone https://$gitea/sbwml/shortcut-fe package/new/shortcut-fe
 
 # Patch FireWall 4
 if [ "$version" = "snapshots-23.05" ] || [ "$version" = "rc2" ]; then
