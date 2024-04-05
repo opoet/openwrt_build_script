@@ -7,6 +7,19 @@ export PINK_COLOR='\e[1;35m'
 export SHAN='\e[1;33;5m'
 export RES='\e[0m'
 
+GROUP=
+group() {
+    endgroup
+    echo "::group::  $1"
+    GROUP=1
+}
+endgroup() {
+    if [ -n "$GROUP" ]; then
+        echo "::endgroup::"
+    fi
+    GROUP=
+}
+
 #####################################
 #  NanoPi R4S OpenWrt Build Script  #
 #####################################
@@ -32,9 +45,9 @@ export gitea=git.cooluc.com
 
 # github mirror
 if [ "$isCN" = "CN" ]; then
-    export github_mirror="https://github.com"
+    export github="github.com"
 else
-    export github_mirror="https://github.com"
+    export github="github.com"
 fi
 
 # Check root
@@ -46,8 +59,10 @@ fi
 # Start time
 starttime=`date +'%Y-%m-%d %H:%M:%S'`
 CURRENT_DATE=$(date +%s)
+
 # Cpus
 cores=`expr $(nproc --all) + 1`
+
 # $CURL_BAR
 if curl --help | grep progress-bar >/dev/null 2>&1; then
     CURL_BAR="--progress-bar";
@@ -83,9 +98,13 @@ export platform=$2
 [ "$platform" = "nanopi-r5s" ] && export platform="rk3568" toolchain_arch="nanopi-r5s"
 [ "$platform" = "x86_64" ] && export platform="x86_64" toolchain_arch="x86_64"
 
-# gcc13
+# gcc13 & 14
 if [ "$USE_GCC13" = y ]; then
     export USE_GCC13=y
+    # use mold
+    [ "$USE_MOLD" = y ] && USE_MOLD=y
+elif [ "$USE_GCC14" = y ]; then
+    export USE_GCC14=y
     # use mold
     [ "$USE_MOLD" = y ] && USE_MOLD=y
 fi
@@ -125,7 +144,13 @@ fi
 
 echo -e "${GREEN_COLOR}Date: $CURRENT_DATE${RES}\r\n"
 
-[ "$USE_GCC13" = "y" ] && echo -e "${GREEN_COLOR}GCC VERSION: 13${RES}" || echo -e "${GREEN_COLOR}GCC VERSION: 11${RES}"
+if [ "$USE_GCC13" = "y" ]; then
+    echo -e "${GREEN_COLOR}GCC VERSION: 13${RES}"
+elif [ "$USE_GCC14" = "y" ]; then
+    echo -e "${GREEN_COLOR}GCC VERSION: 14${RES}"
+else
+    echo -e "${GREEN_COLOR}GCC VERSION: 11${RES}"
+fi
 [ "$USE_MOLD" = "y" ] && echo -e "${GREEN_COLOR}USE_MOLD: true${RES}" || echo -e "${GREEN_COLOR}USE_MOLD: false${RES}"
 [ "$ENABLE_OTA" = "y" ] && echo -e "${GREEN_COLOR}ENABLE_OTA: true${RES}" || echo -e "${GREEN_COLOR}ENABLE_OTA: false${RES}"
 [ "$ENABLE_BPF" = "y" ] && echo -e "${GREEN_COLOR}ENABLE_BPF: true${RES}" || echo -e "${GREEN_COLOR}ENABLE_BPF: false${RES}"
@@ -134,22 +159,25 @@ echo -e "${GREEN_COLOR}Date: $CURRENT_DATE${RES}\r\n"
 [ "$BUILD_FAST" = "y" ] && echo -e "${GREEN_COLOR}BUILD_FAST: true${RES}" || echo -e "${GREEN_COLOR}BUILD_FAST: false${RES}"
 [ "$MINIMAL_BUILD" = "y" ] && echo -e "${GREEN_COLOR}MINIMAL_BUILD: true${RES}\r\n" || echo -e "${GREEN_COLOR}MINIMAL_BUILD: false${RES}\r\n"
 
-# get source
+# clean old files
 rm -rf openwrt master && mkdir master
+
 # openwrt - releases
-git clone --depth=1 $github_mirror/openwrt/openwrt -b $branch
+[ "$(whoami)" = "runner" ] && group "source code"
+git clone --depth=1 https://$github/openwrt/openwrt -b $branch
 
 # openwrt master
-git clone $github_mirror/openwrt/openwrt master/openwrt --depth=1
-git clone $github_mirror/openwrt/packages master/packages --depth=1
-git clone $github_mirror/openwrt/luci master/luci --depth=1
-git clone $github_mirror/openwrt/routing master/routing --depth=1
+git clone https://$github/openwrt/openwrt master/openwrt --depth=1
+git clone https://$github/openwrt/packages master/packages --depth=1
+git clone https://$github/openwrt/luci master/luci --depth=1
+git clone https://$github/openwrt/routing master/routing --depth=1
+
 # openwrt-23.05
-[ "$1" = "rc2" ] && git clone $github_mirror/openwrt/openwrt -b openwrt-23.05 master/openwrt-23.05 --depth=1
+[ "$1" = "rc2" ] && git clone https://$github/openwrt/openwrt -b openwrt-23.05 master/openwrt-23.05 --depth=1
+
 # immortalwrt master
-git clone $github_mirror/immortalwrt/packages master/immortalwrt_packages --depth=1
-# mj22226 openwrt
-git clone $github_mirror/mj22226/openwrt -b linux-6.6 master/mj22226_openwrt --depth=1
+git clone https://$github/immortalwrt/packages master/immortalwrt_packages --depth=1
+[ "$(whoami)" = "runner" ] && endgroup
 
 if [ -d openwrt ]; then
     cd openwrt
@@ -180,15 +208,20 @@ else
     telephony=";$branch"
 fi
 cat > feeds.conf <<EOF
-src-git packages $github_mirror/openwrt/packages.git$packages
-src-git luci $github_mirror/openwrt/luci.git$luci
-src-git routing $github_mirror/openwrt/routing.git$routing
-src-git telephony $github_mirror/openwrt/telephony.git$telephony
+src-git packages https://$github/openwrt/packages.git$packages
+src-git luci https://$github/openwrt/luci.git$luci
+src-git routing https://$github/openwrt/routing.git$routing
+src-git telephony https://$github/openwrt/telephony.git$telephony
 EOF
 
 # Init feeds
+[ "$(whoami)" = "runner" ] && group "feeds update -a"
 ./scripts/feeds update -a
+[ "$(whoami)" = "runner" ] && endgroup
+
+[ "$(whoami)" = "runner" ] && group "feeds install -a"
 ./scripts/feeds install -a
+[ "$(whoami)" = "runner" ] && endgroup
 
 # loader dl
 if [ -f ../dl.gz ]; then
@@ -196,7 +229,6 @@ if [ -f ../dl.gz ]; then
 fi
 
 ###############################################
-
 echo -e "\n${GREEN_COLOR}Patching ...${RES}\n"
 
 # scripts
@@ -208,6 +240,7 @@ curl -sO $mirror/openwrt/scripts/04-fix_kmod.sh
 curl -sO $mirror/openwrt/scripts/05-fix-source.sh
 curl -sO $mirror/openwrt/scripts/99_clean_build_cache.sh
 chmod 0755 *sh
+[ "$(whoami)" = "runner" ] && group "patching openwrt"
 bash 00-prepare_base.sh
 bash 02-prepare_package.sh
 bash 03-convert_translation.sh
@@ -216,6 +249,13 @@ if [ "$platform" = "rk3568" ] || [ "$platform" = "rk3399" ] || [ "$platform" = "
     bash 01-prepare_base-mainline.sh
     bash 04-fix_kmod.sh
 fi
+[ "$(whoami)" = "runner" ] && endgroup
+
+if [ "$USE_GCC14" = "y" ]; then
+    rm -rf toolchain/binutils
+    cp -a ../master/openwrt/toolchain/binutils toolchain/binutils
+fi
+
 rm -f 0*-*.sh
 rm -rf ../master
 
@@ -258,13 +298,22 @@ export ENABLE_LTO=$ENABLE_LTO
 # mold
 [ "$USE_MOLD" = "y" ] && echo 'CONFIG_USE_MOLD=y' >> .config
 
-# openwrt-23.05 gcc11/13
-if [ "$USE_GCC13" = "y" ]; then
-    curl -s $mirror/openwrt/generic/config-gcc13 >> .config
+# openwrt-23.05 gcc11/13/14
+[ "$(whoami)" = "runner" ] && group "patching toolchain"
+if [ "$USE_GCC13" = "y" ] || [ "$USE_GCC14" = "y" ]; then
+    [ "$USE_GCC13" = "y" ] && curl -s $mirror/openwrt/generic/config-gcc13 >> .config
+    [ "$USE_GCC14" = "y" ] && curl -s $mirror/openwrt/generic/config-gcc14 >> .config
     curl -s $mirror/openwrt/patch/generic/200-toolchain-gcc-update-to-13.2.patch | patch -p1
+    curl -s $mirror/openwrt/patch/generic/201-toolchain-gcc-add-support-for-GCC-14.patch | patch -p1
+    if [ "$USE_GCC14" = "y" ]; then
+        cp -a toolchain/gcc/patches-13.x toolchain/gcc/patches-14.x
+        curl -s $mirror/openwrt/patch/generic/gcc-14/910-mbsd_multi.patch > toolchain/gcc/patches-14.x/910-mbsd_multi.patch
+        curl -s $mirror/openwrt/patch/generic/gcc-14/990-libatomic-Fix-build-for---disable-gnu-indirect-function-PR113986.patch > toolchain/gcc/patches-14.x/990-libatomic-Fix-build-for---disable-gnu-indirect-function-PR113986.patch
+    fi
 elif [ ! "$USE_GLIBC" = "y" ]; then
     curl -s $mirror/openwrt/generic/config-gcc11 >> .config
 fi
+[ "$(whoami)" = "runner" ] && endgroup
 
 # clean directory - github actions
 [ "$(whoami)" = "runner" ] && echo 'CONFIG_AUTOREMOVE=y' >> .config
@@ -286,6 +335,8 @@ if [ "$BUILD_FAST" = "y" ]; then
     fi
     if [ "$USE_GCC13" = "y" ]; then
         curl -L "$TOOLCHAIN_URL"/toolchain_"$LIBC"_"$toolchain_arch"_13.tar.gz -o toolchain.tar.gz $CURL_BAR
+    elif [ "$USE_GCC14" = "y" ]; then
+        curl -L "$TOOLCHAIN_URL"/toolchain_"$LIBC"_"$toolchain_arch"_14.tar.gz -o toolchain.tar.gz $CURL_BAR
     else
         curl -L "$TOOLCHAIN_URL"/toolchain_"$LIBC"_"$toolchain_arch".tar.gz -o toolchain.tar.gz $CURL_BAR
     fi
@@ -312,6 +363,8 @@ if [ "$BUILD_TOOLCHAIN" = "y" ]; then
     [ "$USE_GLIBC" = "y" ] && LIBC=glibc || LIBC=musl
     if [ "$USE_GCC13" = "y" ]; then
         tar -zcf toolchain-cache/toolchain_"$LIBC"_"$toolchain_arch"_13.tar.gz ./{build_dir,dl,staging_dir,tmp} && echo -e "${GREEN_COLOR} Build success! ${RES}"
+    elif [ "$USE_GCC14" = "y" ]; then
+        tar -zcf toolchain-cache/toolchain_"$LIBC"_"$toolchain_arch"_14.tar.gz ./{build_dir,dl,staging_dir,tmp} && echo -e "${GREEN_COLOR} Build success! ${RES}"
     else
         tar -zcf toolchain-cache/toolchain_"$LIBC"_"$toolchain_arch".tar.gz ./{build_dir,dl,staging_dir,tmp} && echo -e "${GREEN_COLOR} Build success! ${RES}"
     fi

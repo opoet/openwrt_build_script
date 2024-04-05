@@ -3,11 +3,11 @@
 # Rockchip - rkbin & u-boot
 rm -rf package/boot/uboot-rockchip package/boot/arm-trusted-firmware-rockchip
 if [ "$platform" = "rk3568" ]; then
-    git clone https://github.com/sbwml/package_boot_uboot-rockchip package/boot/uboot-rockchip
-    git clone https://github.com/sbwml/arm-trusted-firmware-rockchip package/boot/arm-trusted-firmware-rockchip
+    git clone https://$github/sbwml/package_boot_uboot-rockchip package/boot/uboot-rockchip
+    git clone https://$github/sbwml/arm-trusted-firmware-rockchip package/boot/arm-trusted-firmware-rockchip
 else
-    git clone https://github.com/sbwml/package_boot_uboot-rockchip package/boot/uboot-rockchip -b v2023.04
-    git clone https://github.com/sbwml/arm-trusted-firmware-rockchip package/boot/arm-trusted-firmware-rockchip -b 0419
+    git clone https://$github/sbwml/package_boot_uboot-rockchip package/boot/uboot-rockchip -b v2023.04
+    git clone https://$github/sbwml/arm-trusted-firmware-rockchip package/boot/arm-trusted-firmware-rockchip -b 0419
 fi
 
 # BTF: fix failed to validate module
@@ -24,6 +24,9 @@ fi
 
 # x86 - disable intel_pstate
 sed -i 's/noinitrd/noinitrd intel_pstate=disable/g' target/linux/x86/image/grub-efi.cfg
+
+# x86 - disable mitigations
+sed -i 's/intel_pstate=disable/intel_pstate=disable mitigations=off/g' target/linux/x86/image/grub-efi.cfg
 
 # default LAN IP
 sed -i 's/192.168.1.1/10.0.0.1/g' package/base-files/files/bin/config_generate
@@ -42,17 +45,12 @@ if [ "$ENABLE_UHTTPD" != "y" ]; then
     fi
 fi
 
-# NIC driver - R8168 & R8125 & R8152 & R8101
-git clone https://github.com/sbwml/package_kernel_r8168 package/kernel/r8168
-git clone https://github.com/sbwml/package_kernel_r8152 package/kernel/r8152
-git clone https://github.com/sbwml/package_kernel_r8101 package/kernel/r8101
-git clone https://github.com/sbwml/package_kernel_r8125 package/kernel/r8125
-
-# netifd - fix auto-negotiate by upstream
-if [ "$version" = "rc2" ]; then
-    rm -rf package/network/config/netifd
-    cp -a ../master/openwrt-23.05/package/network/config/netifd package/network/config/netifd
-fi
+# Realtek driver - R8168 & R8125 & R8126 & R8152 & R8101
+git clone https://$github/sbwml/package_kernel_r8168 package/kernel/r8168
+git clone https://$github/sbwml/package_kernel_r8152 package/kernel/r8152
+git clone https://$github/sbwml/package_kernel_r8101 package/kernel/r8101
+git clone https://$github/sbwml/package_kernel_r8125 package/kernel/r8125
+git clone https://$github/sbwml/package_kernel_r8126 package/kernel/r8126
 
 # Optimization level -Ofast
 if [ "$platform" = "x86_64" ]; then
@@ -128,26 +126,35 @@ git clone https://$gitea/sbwml/shortcut-fe package/new/shortcut-fe
 
 # Patch FireWall 4
 if [ "$version" = "snapshots-23.05" ] || [ "$version" = "rc2" ]; then
-    # firewall4
+    # firewall4 - master
     rm -rf package/network/config/firewall4
     cp -a ../master/openwrt/package/network/config/firewall4 package/network/config/firewall4
     mkdir -p package/network/config/firewall4/patches
-    curl -s $mirror/openwrt/patch/firewall4/999-01-firewall4-add-fullcone-support.patch > package/network/config/firewall4/patches/999-01-firewall4-add-fullcone-support.patch
+    # fix ct status dnat
+    curl -s $mirror/openwrt/patch/firewall4/firewall4_patches/990-unconditionally-allow-ct-status-dnat.patch > package/network/config/firewall4/patches/990-unconditionally-allow-ct-status-dnat.patch
+    # fullcone
+    curl -s $mirror/openwrt/patch/firewall4/firewall4_patches/999-01-firewall4-add-fullcone-support.patch > package/network/config/firewall4/patches/999-01-firewall4-add-fullcone-support.patch
+    # bcm fullcone
+    curl -s $mirror/openwrt/patch/firewall4/firewall4_patches/999-02-firewall4-add-bcm-fullconenat-support.patch > package/network/config/firewall4/patches/999-02-firewall4-add-bcm-fullconenat-support.patch
     # kernel version
-    curl -s $mirror/openwrt/patch/firewall4/002-fix-fw4.uc-adept-kernel-version-type-of-x.x.patch > package/network/config/firewall4/patches/002-fix-fw4.uc-adept-kernel-version-type-of-x.x.patch
+    curl -s $mirror/openwrt/patch/firewall4/firewall4_patches/002-fix-fw4.uc-adept-kernel-version-type-of-x.x.patch > package/network/config/firewall4/patches/002-fix-fw4.uc-adept-kernel-version-type-of-x.x.patch
     # fix flow offload
-    curl -s $mirror/openwrt/patch/firewall4/001-fix-fw4-flow-offload.patch > package/network/config/firewall4/patches/001-fix-fw4-flow-offload.patch
+    curl -s $mirror/openwrt/patch/firewall4/firewall4_patches/001-fix-fw4-flow-offload.patch > package/network/config/firewall4/patches/001-fix-fw4-flow-offload.patch
+    # add custom nft command support
+    curl -s $mirror/openwrt/patch/firewall4/100-openwrt-firewall4-add-custom-nft-command-support.patch | patch -p1
     # libnftnl
     rm -rf package/libs/libnftnl
     cp -a ../master/openwrt/package/libs/libnftnl package/libs/libnftnl
     mkdir -p package/libs/libnftnl/patches
     curl -s $mirror/openwrt/patch/firewall4/libnftnl/001-libnftnl-add-fullcone-expression-support.patch > package/libs/libnftnl/patches/001-libnftnl-add-fullcone-expression-support.patch
+    curl -s $mirror/openwrt/patch/firewall4/libnftnl/002-libnftnl-add-brcm-fullcone-support.patch > package/libs/libnftnl/patches/002-libnftnl-add-brcm-fullcone-support.patch
     sed -i '/PKG_INSTALL:=1/iPKG_FIXUP:=autoreconf' package/libs/libnftnl/Makefile
     # nftables
     rm -rf package/network/utils/nftables
     cp -a ../master/openwrt/package/network/utils/nftables package/network/utils/nftables
     mkdir -p package/network/utils/nftables/patches
     curl -s $mirror/openwrt/patch/firewall4/nftables/002-nftables-add-fullcone-expression-support.patch > package/network/utils/nftables/patches/002-nftables-add-fullcone-expression-support.patch
+    curl -s $mirror/openwrt/patch/firewall4/nftables/003-nftables-add-brcm-fullconenat-support.patch > package/network/utils/nftables/patches/003-nftables-add-brcm-fullconenat-support.patch
     # hide nftables warning message
     pushd feeds/luci
         curl -s $mirror/openwrt/patch/luci/luci-nftables.patch | patch -p1
@@ -158,20 +165,15 @@ fi
 git clone https://$gitea/sbwml/nft-fullcone package/new/nft-fullcone
 
 # IPv6 NAT
-git clone https://github.com/sbwml/packages_new_nat6 package/new/nat6
+git clone https://$github/sbwml/packages_new_nat6 package/new/nat6
 
-# Patch Luci add fullcone & shortcut-fe & ipv6-nat option
+# Patch Luci add nft_fullcone/bcm_fullcone & shortcut-fe & ipv6-nat & custom nft command option
 pushd feeds/luci
-    curl -s $mirror/openwrt/patch/firewall4/01-luci-app-firewall_add_fullcone.patch | patch -p1
+    curl -s $mirror/openwrt/patch/firewall4/01-luci-app-firewall_add_nft-fullcone-bcm-fullcone_option.patch | patch -p1
     curl -s $mirror/openwrt/patch/firewall4/02-luci-app-firewall_add_shortcut-fe.patch | patch -p1
     curl -s $mirror/openwrt/patch/firewall4/03-luci-app-firewall_add_ipv6-nat.patch | patch -p1
+    curl -s $mirror/openwrt/patch/firewall4/04-luci-add-firewall4-nft-rules-file.patch | patch -p1
 popd
-
-# openssl - bump version
-if [ "$version" = "rc2" ]; then
-    rm -rf package/libs/openssl
-    cp -a ../master/openwrt-23.05/package/libs/openssl package/libs/openssl
-fi
 
 # openssl - quictls
 pushd package/libs/openssl/patches
@@ -238,25 +240,19 @@ fi
 
 # nghttp3
 rm -rf feeds/packages/libs/nghttp3
-git clone https://github.com/sbwml/package_libs_nghttp3 package/libs/nghttp3
+git clone https://$github/sbwml/package_libs_nghttp3 package/libs/nghttp3
 
 # ngtcp2
 rm -rf feeds/packages/libs/ngtcp2
-git clone https://github.com/sbwml/package_libs_ngtcp2 package/libs/ngtcp2
+git clone https://$github/sbwml/package_libs_ngtcp2 package/libs/ngtcp2
 
-# curl/8.5.0 - fix passwall `time_pretransfer` check
+# curl - fix passwall `time_pretransfer` check
 rm -rf feeds/packages/net/curl
-git clone https://github.com/sbwml/feeds_packages_net_curl feeds/packages/net/curl
+git clone https://$github/sbwml/feeds_packages_net_curl feeds/packages/net/curl
 
 # wget - SmartDrive user-agent
 mkdir -p feeds/packages/net/wget/patches
 curl -s $mirror/openwrt/patch/user-agent/999-wget-default-useragent.patch > feeds/packages/net/wget/patches/999-wget-default-useragent.patch
-
-# dnsmasq - bump version
-DNSMASQ_VERSION=2.90
-DNSMASQ_HASH=8e50309bd837bfec9649a812e066c09b6988b73d749b7d293c06c57d46a109e4
-sed -ri "s/(PKG_UPSTREAM_VERSION:=)[^\"]*/\1$DNSMASQ_VERSION/;s/(PKG_HASH:=)[^\"]*/\1$DNSMASQ_HASH/" package/network/services/dnsmasq/Makefile
-curl -s $mirror/openwrt/patch/dnsmasq/200-ubus_dns.patch > package/network/services/dnsmasq/patches/200-ubus_dns.patch
 
 # Docker
 rm -rf feeds/luci/applications/luci-app-dockerman
@@ -270,7 +266,8 @@ if [ "$version" = "snapshots-23.05" ] || [ "$version" = "rc2" ]; then
 fi
 sed -i '/sysctl.d/d' feeds/packages/utils/dockerd/Makefile
 pushd feeds/packages
-    curl -s $mirror/openwrt/patch/docker/dockerd-fix-bridge-network.patch | patch -p1
+    curl -s $mirror/openwrt/patch/docker/0001-dockerd-fix-bridge-network.patch | patch -p1
+    curl -s $mirror/openwrt/patch/docker/0002-docker-add-buildkit-experimental-support.patch | patch -p1
 popd
 
 # cgroupfs-mount
@@ -317,7 +314,7 @@ popd
 
 # nginx - latest version
 rm -rf feeds/packages/net/nginx
-git clone https://github.com/sbwml/feeds_packages_net_nginx feeds/packages/net/nginx -b quic
+git clone https://$github/sbwml/feeds_packages_net_nginx feeds/packages/net/nginx -b quic
 sed -i 's/procd_set_param stdout 1/procd_set_param stdout 0/g;s/procd_set_param stderr 1/procd_set_param stderr 0/g' feeds/packages/net/nginx/files/nginx.init
 
 # nginx - ubus
@@ -349,10 +346,12 @@ sed -i 's/cheaper = 1/cheaper = 2/g' feeds/packages/net/uwsgi/files-luci-support
 sed -i 's/option timeout 30/option timeout 60/g' package/system/rpcd/files/rpcd.config
 sed -i 's#20) \* 1000#60) \* 1000#g' feeds/luci/modules/luci-base/htdocs/luci-static/resources/rpc.js
 
-# luci - 20_memory & refresh interval
+# luci - 20_memory & 25_storage & refresh interval
 pushd feeds/luci
     curl -s $mirror/openwrt/patch/luci/20_memory.js.patch | patch -p1
     curl -s $mirror/openwrt/patch/luci/luci-refresh-interval.patch | patch -p1
+    # luci-mod-status: storage index applicable only to valid
+    curl -s $mirror/openwrt/patch/luci/luci-mod-status-storage-index-applicable-only-to-val.patch | patch -p1
 popd
 
 # Luci diagnostics.js
@@ -361,13 +360,16 @@ sed -i "s/openwrt.org/www.qq.com/g" feeds/luci/modules/luci-mod-network/htdocs/l
 # luci - drop ethernet port status
 rm -f feeds/luci/modules/luci-mod-status/htdocs/luci-static/resources/view/status/include/29_ports.js
 
+# luci - rollback dhcp.js
+curl -s $mirror/openwrt/patch/luci/dhcp/dhcp.js > feeds/luci/modules/luci-mod-network/htdocs/luci-static/resources/view/network/dhcp.js
+
 # ppp - 2.5.0
 rm -rf package/network/services/ppp
-git clone https://github.com/sbwml/package_network_services_ppp package/network/services/ppp
+git clone https://$github/sbwml/package_network_services_ppp package/network/services/ppp
 
 # urngd - 2020-01-21
 rm -rf package/system/urngd
-git clone https://github.com/sbwml/package_system_urngd package/system/urngd
+git clone https://$github/sbwml/package_system_urngd package/system/urngd
 
 # zlib - 1.3
 ZLIB_VERSION=1.3.1
