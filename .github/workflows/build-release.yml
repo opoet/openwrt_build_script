@@ -12,6 +12,11 @@ on:
           - nanopi-r4s
           - nanopi-r5s
           - x86_64
+      is-minimal:
+        type: boolean
+        description: 'Build minimal firmware'
+        required: false
+        default: false
 
 env:
   WORKDIR:
@@ -90,7 +95,7 @@ jobs:
       continue-on-error: true
       run: |
         export GITHUB_REPO=${{ github.repository }}
-        BUILD_FAST=y ENABLE_LTO=y ENABLE_LRNG=y ENABLE_BPF=y USE_GCC13=y USE_MOLD=y bash ${{ github.workspace }}/build.sh ${{ matrix.tag.type }} ${{ github.event.inputs.model }}
+        BUILD_FAST=y ENABLE_LTO=y ENABLE_LRNG=y ENABLE_BPF=y USE_GCC14=y USE_MOLD=y ${{ github.event.inputs.is-minimal == 'true' && 'MINIMAL_BUILD=y' }} bash ${{ github.workspace }}/build.sh ${{ matrix.tag.type }} ${{ github.event.inputs.model }}
         cd openwrt
         tags=$(git describe --abbrev=0 --tags)
         echo "latest_release=$tags" >> "$GITHUB_ENV"
@@ -124,12 +129,12 @@ jobs:
           cp -a openwrt/bin/targets/x86/*/config.buildinfo info/config.buildinfo
           cd rom && sha256sum *gz > ../info/sha256sums.txt
         fi
-        tar zcf buildinfo_${{ github.event.inputs.model }}.tar.gz ../info
+        tar zcf buildinfo_${{ github.event.inputs.model }}${{ github.event.inputs.is-minimal == 'true' && '_minimal' }}.tar.gz ../info
 
     - name: Upload artifacts
       uses: actions/upload-artifact@main
       with:
-        name: ${{ github.event.inputs.model }}-${{ matrix.tag.version }}
+        name: ${{ github.event.inputs.model }}-${{ matrix.tag.version }}${{ github.event.inputs.is-minimal == 'true' && '_minimal' }}
         path: |
           ${{ env.WORKDIR }}/rom/*.gz
 
@@ -137,7 +142,7 @@ jobs:
       continue-on-error: true
       uses: ncipollo/release-action@main
       with:
-        name: OpenWRT-${{ env.latest_release }}-${{ github.ref_name }}-${{ env.SHORT_SHA }}
+        name: OpenWRT-${{ env.latest_release }}-${{ github.ref_name }}-${{ env.SHORT_SHA }}${{ github.event.inputs.is-minimal == 'true' && '-minimal' }}
         allowUpdates: true
         tag: ${{ env.latest_release }}-${{ github.ref_name }}-${{ env.SHORT_SHA }}
         commit: main
